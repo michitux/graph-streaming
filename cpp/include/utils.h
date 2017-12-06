@@ -12,6 +12,10 @@
 
 long unsigned StartClock();
 long unsigned StopClock(long unsigned initTime);
+int LoadBinaryGraph(const std::vector<std::string>& paths,
+		    std::vector<Edge> &edgeList,
+		    Node& maxNodeId);
+int PrintBinaryPartition(const std::string& fileName, const std::vector<uint32_t>& nodeCommunity);
 int LoadGraph(char * graphFileName,
               std::vector< Edge >& edgeList,
               Node& maxNodeId,

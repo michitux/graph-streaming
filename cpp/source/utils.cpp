@@ -1,4 +1,5 @@
 #include "utils.h"
+#include <cassert>
 
 long unsigned StartClock() {
     timeval time;
@@ -46,12 +47,103 @@ int LoadGraph(char * graphFileName,
     return 0;
 }
 
+template <typename stream_t>
+uint64_t GetVarint(stream_t &is) {
+  auto get_byte = [&is]() -> uint8_t {
+    uint8_t result;
+    is.read(reinterpret_cast<char*>(&result), 1);
+    return result;
+  };
+  uint64_t u, v = get_byte();
+  if (!(v & 0x80)) return v;
+  v &= 0x7F;
+  u = get_byte(), v |= (u & 0x7F) << 7;
+  if (!(u & 0x80)) return v;
+  u = get_byte(), v |= (u & 0x7F) << 14;
+  if (!(u & 0x80)) return v;
+  u = get_byte(), v |= (u & 0x7F) << 21;
+  if (!(u & 0x80)) return v;
+  u = get_byte(), v |= (u & 0x7F) << 28;
+  if (!(u & 0x80)) return v;
+  u = get_byte(), v |= (u & 0x7F) << 35;
+  if (!(u & 0x80)) return v;
+  u = get_byte(), v |= (u & 0x7F) << 42;
+  if (!(u & 0x80)) return v;
+  u = get_byte(), v |= (u & 0x7F) << 49;
+  if (!(u & 0x80)) return v;
+  u = get_byte(), v |= (u & 0x7F) << 56;
+  if (!(u & 0x80)) return v;
+  u = get_byte();
+  if (u & 0xFE)
+    throw std::overflow_error("Overflow during varint64 decoding.");
+  v |= (u & 0x7F) << 63;
+  return v;
+}
+
+int LoadBinaryGraph(const std::vector<std::string>& paths, std::vector<Edge> &edgeList, Node& maxNodeId) {
+    maxNodeId = 0;
+    if (!paths.empty()) {
+        std::ifstream is;
+        size_t _file_index = 0;
+
+        auto next_input = [&]() {
+            is.close();
+            if (_file_index < paths.size()) {
+                is.open(paths[_file_index++]);
+                if (!is) {
+                    printf("Graph: Error Opening Graph file\n");
+                }
+            }
+        };
+
+        next_input();
+
+        if (!is) return 1;
+
+        for (uint32_t u = 0; is.good() && is.is_open(); ++u) {
+            if (u > maxNodeId) maxNodeId = u;
+            for (size_t deg = GetVarint(is); deg > 0 && is.good(); --deg) {
+                uint32_t v;
+                if (!is.read(reinterpret_cast<char*>(&v), 4)) {
+                    throw std::runtime_error("I/O error while reading next neighbor");
+                }
+
+                assert(u != v);
+                
+                if (v > maxNodeId) maxNodeId = v;
+
+                edgeList.emplace_back(u, v);
+            }
+
+            if (is.is_open() && (is.peek() == std::char_traits<char>::eof() || !is.good())) {
+                next_input();
+            }
+        }
+    }
+    
+    return 0;
+}
+
 int BuildNeighborhoods(std::vector< Edge >& edgeList, std::vector< NodeSet >& nodeNeighbors) {
     for (std::vector< Edge >::iterator it = edgeList.begin(); it != edgeList.end(); ++it) {
         Edge edge(*it);
         nodeNeighbors[edge.first].insert(edge.second);
         nodeNeighbors[edge.second].insert(edge.first);
     }
+    return 0;
+}
+
+int PrintBinaryPartition(const std::string& fileName,
+                         const std::vector<uint32_t>& nodeCommunity) {
+    std::ofstream outFile(fileName, std::ios::binary);
+
+    if (!outFile) return 1;
+
+    for (Node u = 0; u < nodeCommunity.size(); ++u) {
+        outFile.write(reinterpret_cast<const char*>(&u), 4);
+        outFile.write(reinterpret_cast<const char*>(&nodeCommunity[u]), 4);
+    }
+
     return 0;
 }
 

@@ -10,6 +10,7 @@
 #include <string>
 #include <ctime>
 #include <random>
+#include <cassert>
 #include "types.h"
 #include "utils.h"
 
@@ -23,6 +24,20 @@
                 return 1;\
             }\
         }
+
+#define CHECK_ARGUMENT_STRINGLIST(index, option,variable,setVariable) \
+    if( strcmp(argv[index],option) == 0 ){ \
+            setVariable = true; \
+            size_t s_i = 1; \
+            if ((index) + 1 == argc) { \
+                printf("Invalid options.\n");   \
+                return 1;                       \
+            }\
+            for (size_t s_i = (index) + 1; s_i < argc && strcmp(argv[s_i], "-") != 0; ++s_i) { \
+                variable.emplace_back(argv[s_i]); \
+            }\
+        }
+
 
 #define CHECK_ARGUMENT_FLOAT(index, option,variable,setVariable) \
     if( strcmp(argv[index],option) == 0 ){ \
@@ -75,10 +90,12 @@ int StreamComAlgo(const std::vector< Edge >& edgeList,
             uint32_t maxVolume = maxVolumeList[i];
             if(nodeCommunityList[i][sourceNode] == 0) {
                 nodeCommunityList[i][sourceNode] = nextCommunityIdList[i];
+                assert(nodeCommunityList[i][sourceNode] < communityVolumeList[i].size());
                 nextCommunityIdList[i]++;
             }
             if(nodeCommunityList[i][targetNode] == 0) {
                 nodeCommunityList[i][targetNode] = nextCommunityIdList[i];
+                assert(nodeCommunityList[i][targetNode] < communityVolumeList[i].size());
                 nextCommunityIdList[i]++;
             }
             uint32_t sourceCommunityVolume = ++communityVolumeList[i][nodeCommunityList[i][sourceNode]];
@@ -105,6 +122,7 @@ static void PrintUsage() {
     printf("Usage: streamcom <flags>\n");
     printf("Availaible flags:\n");
     printf("\t-f [graph file name] : Specifies the graph file.\n");
+    printf("\t--binary-files [binary file name]... : Specifies the binary graph input files (use instead of -f). Implies that the output will be binary, too.\n");
     printf("\t--skip [number of lines] : Specifies the number of lines to skip in the graph file.\n");
     printf("\t-o [output file name] : Specifies the output file for communities.\n");
     printf("\t--vmax-start [maximum volume range start] : Specifies the maximum volume for the aggregation phase, beginning of the range.\n");
@@ -116,6 +134,7 @@ static void PrintUsage() {
 
 int main(int argc, char ** argv) {
     bool graphFileNameSet = false;
+    bool binGraphFileNamesSet = false;
     bool outputFileNameSet = false;
     bool volumeThresholdStartSet = false;
     bool volumeThresholdEndSet = false;
@@ -131,9 +150,11 @@ int main(int argc, char ** argv) {
     int randomSeed = 0;
     uint32_t nIter = 1;
     uint32_t nbLinesToSkip = 0;
+    std::vector<std::string> binaryGraphFiles;
 
     for(int i = 1; i < argc; i++) {
         CHECK_ARGUMENT_STRING(i, "-f", graphFileName, graphFileNameSet);
+        CHECK_ARGUMENT_STRINGLIST(i, "--binary-files", binaryGraphFiles, binGraphFileNamesSet);
         CHECK_ARGUMENT_INT(i, "--skip", nbLinesToSkip, nbLinesToSkipSet);
         CHECK_ARGUMENT_STRING(i, "-o", outputFileName, outputFileNameSet)
         CHECK_ARGUMENT_INT(i, "--vmax-start", volumeThresholdStart, volumeThresholdStartSet);
@@ -143,7 +164,7 @@ int main(int argc, char ** argv) {
         CHECK_ARGUMENT_INT(i, "--niter", nIter, nIterSet);
     }
 
-    if (!graphFileNameSet) {
+    if (!graphFileNameSet && !binGraphFileNamesSet) {
         printf("Graph filename not set\n");
         PrintUsage();
         return 1;
@@ -182,7 +203,11 @@ int main(int argc, char ** argv) {
     printf("%-32s %s\n", "Graph file name:", graphFileName);
     printf("%-32s %i\n", "Number of lines to skip:", nbLinesToSkip);
     Node maxNodeId;
-    LoadGraph(graphFileName, edgeList, maxNodeId, nbLinesToSkip);
+    if (graphFileNameSet) {
+        LoadGraph(graphFileName, edgeList, maxNodeId, nbLinesToSkip);
+    } else {
+        LoadBinaryGraph(binaryGraphFiles, edgeList, maxNodeId);
+    }
     spentTime = StopClock(initTime);
     loadingTime = spentTime;
     totalTime += spentTime;
@@ -212,12 +237,16 @@ int main(int argc, char ** argv) {
         //======================== PRINT RESULTS ===============================
         initTime = StartClock();
         for (uint32_t i = 0; i < volumeThresholdList.size(); i++) {
-            std::map< uint32_t, std::set< Node > > communities;
-            GetCommunities(nodeCommunityList[i], maxNodeId, communities);
             std::string outputFileName_i = outputFileName;
             outputFileName_i += "_" + std::to_string(iter) + "_" + std::to_string(volumeThresholdList[i]);
             printf("%-32s %i\t", "Volume theshold: ", volumeThresholdList[i]);
-            PrintPartition(outputFileName_i.c_str(), communities, false);
+            if (graphFileNameSet) {
+                std::map< uint32_t, std::set< Node > > communities;
+                GetCommunities(nodeCommunityList[i], maxNodeId, communities);
+                PrintPartition(outputFileName_i.c_str(), communities, false);
+            } else {
+                PrintBinaryPartition(outputFileName_i, nodeCommunityList[i]);
+            }
         }
         spentTime = StopClock(initTime);
         totalTime += spentTime;
