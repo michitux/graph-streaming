@@ -238,7 +238,9 @@ int main(int argc, char ** argv) {
         initTime = StartClock();
         for (uint32_t i = 0; i < volumeThresholdList.size(); i++) {
             std::string outputFileName_i = outputFileName;
-            outputFileName_i += "_" + std::to_string(iter) + "_" + std::to_string(volumeThresholdList[i]);
+            if (nIter > 1 || volumeThresholdList.size() > 1) {
+                outputFileName_i += "_" + std::to_string(iter) + "_" + std::to_string(volumeThresholdList[i]);
+            }
             printf("%-32s %i\t", "Volume theshold: ", volumeThresholdList[i]);
             if (graphFileNameSet) {
                 std::map< uint32_t, std::set< Node > > communities;
